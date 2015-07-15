@@ -43,6 +43,7 @@
     <Compile Include="Background.cs" />
     <Compile Include="Basics.cs" />
     <Compile Include="Camera.cs" />
+    <Compile Include="GraphicObject.cs" />
     <Compile Include="GameObject.cs" />
     <Compile Include="GameWorld.cs" />
     <Compile Include="Parallax.cs" />
