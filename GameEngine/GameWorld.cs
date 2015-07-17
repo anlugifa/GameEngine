@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 
 namespace GameEngine
 {
@@ -93,7 +94,7 @@ namespace GameEngine
         /// <summary>
         /// A list of all objects within the level file.
         /// </summary>
-        public ArrayList WorldObjects = new ArrayList();
+        public List<GameObject> WorldObjects = new List<GameObject>();
 
         /// <summary>
         /// The background object - a parallax scroller. Draws before all the objects in the environment.
@@ -413,15 +414,246 @@ namespace GameEngine
                     int rightX = (location.X + objSize.Width) / BumpMapSize.X;
                     int rightY = (location.Y + objSize.Height) / BumpMapSize.Y;
 
-                    if (BumpMap[leftX, leftY] == 0 && BumpMap[rightX, rightY] == 0)
-                        return false;
-
-                    return true;
+                    return BumpMap[leftX, leftY] != 0 || BumpMap[rightX, rightY] != 0;                        
                 }
             }
 
             return false;
         }
+
+        /// <summary>
+        /// Check if a single point touched the bump map array.
+        /// </summary>
+        /// <param name="location">The point to test.</param>        
+        /// <returns>True if touchs</returns>
+        public bool CheckBumpMap(ref Point3D location)
+        {
+            if (BumpMapSize.X > 0) // intuitivo
+            {
+                if (location.X > 0 && location.Y > 0)
+                {
+                    int leftX = location.X / BumpMapSize.X;
+                    int leftY = location.Y / BumpMapSize.Y;
+
+                    return BumpMap[leftX, leftY] != 0;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Move all game object items based on the gravity values set in the object
+        /// This will fire GravityTouched BumpMap if it has been touched ItemWallCollision if necessary
+        /// </summary>
+        public void GravityMoveItems()
+        {
+            int counter = 0;
+                        
+            Point3D location;
+            Point3D location2;
+
+            var testLocation = new Point(0, 0);
+            var makeFlush = new Point(0, 0);
+
+            while (counter < WorldObjects.Count)
+            {
+                bool tested = false;
+
+                GameObject item = WorldObjects[counter] as GameObject;
+
+                location = item.Location;
+                item.GravityMove();
+                location2 = item.Location;
+
+                // width
+                if (item.Gravity.X == 0) // intuitivo
+                {
+                    testLocation.X = item.ObjectSize.Width / 2;
+                    makeFlush.X = 0;
+                }
+                else if (item.Gravity.X > 0)
+                {
+                    testLocation.X = item.ObjectSize.Width;
+                    makeFlush.X = -1;
+                }
+                else
+                {
+                    testLocation.X = 0;
+                    makeFlush.X = 1;
+                }
+
+                // height
+                if (item.Gravity.Y == 0) // intuitivo
+                {
+                    testLocation.Y = item.ObjectSize.Height / 2;
+                    makeFlush.Y = 0;
+                }
+                else if (item.Gravity.Y > 0)
+                {
+                    testLocation.Y = item.ObjectSize.Height;
+                    makeFlush.Y = -1;
+                }
+                else
+                {
+                    testLocation.Y = 0;
+                    makeFlush.Y = 1;
+                }
+
+                location2.X += testLocation.X;
+                location2.Y += testLocation.Y;
+
+                // test if hit bump map
+                if (!item.Ghost && CheckBumpMap(ref location2))
+                {
+                    tested = true;
+
+                    // move item until it flushs with bump map
+                    item.Location = location;
+
+                    if (GravityTouchedBumpMap != null)
+                        GravityTouchedBumpMap(ref item);
+                }
+
+                //check to see if it is hit a side
+                if (item.Location.X < 0) // intuitivo
+                {
+                    tested = true;
+                    if (ItemWallCollision != null)
+                        ItemWallCollision(ref item, WallCollision.Left);
+                }
+                else if (item.Location.X + item.ObjectSize.Width > LevelSize.Width)
+                {
+                    tested = true;
+                    if (ItemWallCollision != null)
+                        ItemWallCollision(ref item, WallCollision.Right);
+                }
+
+                if (item.Location.Y < 0) // intuitivo
+                {
+                    tested = true;
+                    if (ItemWallCollision != null)
+                        ItemWallCollision(ref item, WallCollision.Top);
+                }
+                else if (item.Location.Y + item.ObjectSize.Height> LevelSize.Height)
+                {
+                    tested = true;
+                    if (ItemWallCollision != null)
+                        ItemWallCollision(ref item, WallCollision.Bottom);
+                }
+
+                if (tested)
+                    WorldObjects[counter] = item;
+
+                counter++;
+            }
+        }
+
+
+        /// <summary>
+        /// Go through all world objects moving them based on their speed or target location. Fire TouchedBumpMap is necessary.
+        /// </summary>
+        public void MoveItems()
+        {
+            for (int i = 0; i < WorldObjects.Count; i++ )
+            {
+                bool tested = false;
+
+                var item = WorldObjects[i];
+                var location = item.Location;
+                item.Move();
+                var location2 = item.Location;
+
+                // hit bump map
+                if (!item.Ghost && CheckBumpMap(ref location2, ref item.ObjectSize))
+                {
+                    tested = true;
+                    item.Location = location;
+                    if (TouchedBumpMap != null)
+                        TouchedBumpMap(ref item);
+                }
+
+                // reach target
+                if (item.ReachedTarget)
+                {
+                    tested = true;
+                    if (ReachedTarget != null)
+                        ReachedTarget(ref item);
+                }
+
+                //check to see if it is hit a side
+                if (item.Location.X < 0) // intuitivo
+                {
+                    tested = true;
+                    if (ItemWallCollision != null)
+                        ItemWallCollision(ref item, WallCollision.Left);
+                }
+                else if (item.Location.X + item.ObjectSize.Width > LevelSize.Width)
+                {
+                    tested = true;
+                    if (ItemWallCollision != null)
+                        ItemWallCollision(ref item, WallCollision.Right);
+                }
+
+                if (item.Location.Y < 0) // intuitivo
+                {
+                    tested = true;
+                    if (ItemWallCollision != null)
+                        ItemWallCollision(ref item, WallCollision.Top);
+                }
+                else if (item.Location.Y + item.ObjectSize.Height > LevelSize.Height)
+                {
+                    tested = true;
+                    if (ItemWallCollision != null)
+                        ItemWallCollision(ref item, WallCollision.Bottom);
+                }
+
+                if (tested)
+                    WorldObjects[i] = item;
+            }
+        }
+
+        /// <summary>
+        /// Goes through all the world objects and check anything that is not a ghost to see if there is a collision.
+        /// If a collision is detected and object is scheduled for removal it is removed.
+        /// Fire ItemObjectCollision when necessary.
+        /// </summary>
+        public void CheckColisions()
+        {
+            if (WorldObjects.Count < 2)
+            {
+                return;
+            }
+
+            for (int i = 0; i < WorldObjects.Count - 1; i++)
+            {
+                var item1 = WorldObjects[i];
+                var item1Rec = new Rectangle(item1.Location.X, item1.Location.Y, item1.ObjectSize.Width, item1.ObjectSize.Height);
+
+                if (!item1.Ghost && !item1.Dead)
+                {
+                    for (int j = i + 1; j < WorldObjects.Count; j++)
+                    {
+                        var item2 = WorldObjects[j];
+                        var item2Rec = new Rectangle(item2.Location.X, item2.Location.Y, item2.ObjectSize.Width, item2.ObjectSize.Height);
+
+                        if (!item2.Ghost && !item2.Dead)
+                        {                                
+                            if (item1Rec.IntersectsWith(item2Rec))
+                            {
+                                // collision
+                                if (ItemObjectCollision != null)
+                                    ItemObjectCollision(ref item1, ref item2);
+                            }                                
+                        }
+                    }
+                }                
+            }
+
+            // remove dead objects
+            WorldObjects.RemoveAll(obj => obj.Dead);          
+        }
+
 
         #endregion
 
